@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UPK Viewer</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161922; --border: #262b38;
+    --text: #e6e8ef; --muted: #8b90a3; --accent: #6ea8fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  main { display: flex; height: calc(100vh - 66px); }
+  .drop {
+    margin: 20px; padding: 40px; border: 2px dashed var(--border); border-radius: 8px;
+    text-align: center; color: var(--muted);
+  }
+  .drop.drag { border-color: var(--accent); color: var(--text); }
+  .drop-buttons { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+  .drop-buttons button, #zipCancel {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  .drop-buttons button:hover, #zipCancel:hover { border-color: var(--accent); }
+  .zip-entry-list { max-width: 480px; margin: 16px auto; text-align: left; }
+  .zip-entry {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 6px; cursor: pointer; font-size: 13px; display: flex;
+    justify-content: space-between; gap: 8px;
+  }
+  .zip-entry:hover { border-color: var(--accent); background: var(--panel); }
+  .zip-entry .size { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  #layout { display: none; width: 100%; }
+  #layout.active { display: flex; }
+  nav {
+    width: 320px; border-right: 1px solid var(--border); overflow-y: auto; padding: 10px;
+  }
+  section#detail { flex: 1; overflow-y: auto; padding: 16px 24px; }
+  .tab { display: flex; gap: 6px; padding: 6px 10px 0; }
+  .tab button {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    padding: 6px 10px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 12px;
+  }
+  .tab button.active { color: var(--text); background: var(--panel); border-bottom-color: var(--panel); }
+  .list-item {
+    padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .list-item:hover { background: var(--panel); }
+  .list-item .idx { color: var(--muted); font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .kv { display: grid; grid-template-columns: 200px 1fr; gap: 4px 12px; font-size: 13px; margin-bottom: 20px; }
+  .kv div.k { color: var(--muted); }
+  .warn { background: #3a2c14; border: 1px solid #6b5322; color: #f2c674; padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-bottom: 12px; }
+  .err { background: #3a1414; border: 1px solid #6b2222; color: #f28787; padding: 12px; border-radius: 6px; margin: 20px; }
+  input[type=file] { display: none; }
+  code { color: var(--accent); }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>UPK Viewer</h1>
+  <p>Browser-based Unreal Engine 3 / UDK package (.upk, .udk, .u, .umap) structural viewer — runs entirely client-side via WebAssembly.</p>
+  <p><a href="./viewer3d/">Probar el nuevo visor 3D (en desarrollo)</a></p>
+</header>
+<main>
+  <div class="drop" id="drop">
+    <p>Drop a .upk / .udk / .umap file, or a .zip containing one, here</p>
+    <div class="drop-buttons">
+      <button type="button" id="btnFile">Import UPK / UDK file</button>
+      <button type="button" id="btnZip">Import ZIP</button>
+    </div>
+    <input type="file" id="file" accept=".upk,.udk,.u,.umap,*" />
+    <input type="file" id="zipFile" accept=".zip" />
+  </div>
+  <div class="drop" id="zipPicker" style="display:none;">
+    <p>Choose a package inside <strong id="zipName"></strong>:</p>
+    <div id="zipEntryList" class="zip-entry-list"></div>
+    <button type="button" id="zipCancel">Cancel</button>
+  </div>
+  <div id="layout">
+    <nav>
+      <div class="tab">
+        <button data-tab="names" class="active">Names</button>
+        <button data-tab="imports">Imports</button>
+        <button data-tab="exports">Exports</button>
+      </div>
+      <div id="list"></div>
+    </nav>
+    <section id="detail"></section>
+  </div>
+</main>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
