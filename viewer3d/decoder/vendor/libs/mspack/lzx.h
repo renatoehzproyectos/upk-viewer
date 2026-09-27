@@ -154,7 +154,7 @@ extern void lzxd_set_output_length(struct lzxd_stream *lzx,
  * Decompresses entire or partial LZX streams.
  *
  * The number of bytes of data that should be decompressed is given as the
- * out_bytes parameter. If more bytes are decoded than are needed, they
+ * out_bytes parameter.ï¿½If more bytes are decoded than are needed, they
  * will be kept over for a later invocation.
  *
  * The output bytes will be passed to the system->write() function given in
