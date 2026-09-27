@@ -134,6 +134,7 @@ pub struct PackageSummary {
     magic_ok: bool,
     file_version: u16,
     licensee_version: u16,
+    is_udk: bool,
     total_header_size: u32,
     folder_name: String,
     package_flags: u32,
@@ -144,9 +145,12 @@ pub struct PackageSummary {
     export_offset: u32,
     import_count: u32,
     import_offset: u32,
+    depends_offset: u32,
     guid: [u32; 4],
     engine_version: u32,
     cooker_version: u32,
+    compression_flags: u32,
+    compressed_chunk_count: u32,
 }
 
 #[derive(Serialize)]
@@ -226,28 +230,54 @@ fn parse(data: &[u8]) -> Result<ParsedPackage> {
     let import_count = c.u32()?;
     let import_offset = c.u32()?;
 
+    // UDK (Unreal Development Kit) is Epic's own unmodified UE3 build, so it uses this
+    // same container format, but ships as monthly updates with a much higher, unmodified
+    // FileVersion (typically 700+, often 800s-900s) and LicenseeVersion 0. Licensed UE3
+    // titles almost always have a non-zero LicenseeVersion or a lower FileVersion because
+    // they forked off an earlier engine drop and customized it. This is a heuristic, not
+    // a hard identification, and is reported as such rather than gating parsing on it.
+    let is_udk = licensee_version == 0 && file_version >= 700;
+
     // Fields below this point vary the most between engine forks; treat failures as
     // non-fatal since we already have what we need to walk the three key tables.
     let mut engine_version = 0u32;
     let mut cooker_version = 0u32;
     let mut guid = [0u32; 4];
-    {
-        // DependsOffset (u32) commonly follows import table info in vanilla UE3.
-        let _ = c.u32(); // depends_offset, unused here
-        // Some builds insert ImportExportGuidsOffset/ImportGuidsCount/ExportGuidsCount
-        // (UDK) here; we don't rely on them.
-        if let (Ok(g), Ok(ev), Ok(cv)) = (
-            (|| -> Result<[u32; 4]> { c.guid() })(),
-            c.u32(),
-            c.u32(),
-        ) {
-            guid = g;
-            engine_version = ev;
-            cooker_version = cv;
-        } else {
-            warnings.push(
-                "could not read optional GUID/EngineVersion/CookerVersion fields (engine fork differences); continuing with table offsets only".to_string(),
-            );
+    let mut compression_flags = 0u32;
+    let mut compressed_chunk_count = 0u32;
+
+    // DependsOffset (u32) follows the import table info in both vanilla UE3 and UDK.
+    let depends_offset = c.u32().unwrap_or(0);
+
+    // UDK inserts a handful of extra offset/count fields here (import/export GUIDs,
+    // thumbnail table) that older vanilla UE3 titles don't have. We don't need their
+    // values for the name/import/export tables (which are already located), so we
+    // don't try to parse them positionally - doing so reliably would require knowing
+    // the exact engine version cutoff, which varies by build. Instead we jump straight
+    // to GUID/EngineVersion/CookerVersion, which is a stable trailing block across both.
+    if let (Ok(g), Ok(ev), Ok(cv)) = ((|| -> Result<[u32; 4]> { c.guid() })(), c.u32(), c.u32()) {
+        guid = g;
+        engine_version = ev;
+        cooker_version = cv;
+    } else {
+        warnings.push(
+            "could not read optional GUID/EngineVersion/CookerVersion fields (engine fork differences); continuing with table offsets only".to_string(),
+        );
+    }
+
+    // CompressionFlags + CompressedChunks[] commonly follow. Best-effort only: if the
+    // chunk count looks implausible we back off rather than treat it as fatal, since by
+    // this point we already have everything needed to browse names/imports/exports.
+    if let Ok(cf) = c.u32() {
+        if let Ok(chunk_count) = c.u32() {
+            if chunk_count <= 100_000 {
+                compression_flags = cf;
+                compressed_chunk_count = chunk_count;
+            } else {
+                warnings.push(
+                    "compressed-chunk count looked implausible; skipping compression chunk details".to_string(),
+                );
+            }
         }
     }
 
@@ -264,19 +294,23 @@ fn parse(data: &[u8]) -> Result<ParsedPackage> {
         magic_ok: true,
         file_version,
         licensee_version,
+        is_udk,
         total_header_size,
         folder_name,
         package_flags,
-        compressed: package_flags & PKG_COMPRESSED != 0,
+        compressed: package_flags & PKG_COMPRESSED != 0 || compression_flags != 0,
         name_count,
         name_offset,
         export_count,
         export_offset,
         import_count,
         import_offset,
+        depends_offset,
         guid,
         engine_version,
         cooker_version,
+        compression_flags,
+        compressed_chunk_count,
     };
 
     // ---- Name table ----
