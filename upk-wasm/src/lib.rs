@@ -176,7 +176,9 @@ pub struct ExportEntry {
     outer_index: i32,
     object_name: String,
     archetype_index: i32,
-    object_flags: u64,
+    /// Formatted as a hex string ("0x...") because u64 can't always be represented
+    /// exactly as a JS Number, and serde-wasm-bindgen otherwise errors on large values.
+    object_flags: String,
     serial_size: i32,
     serial_offset: i32,
 }
@@ -387,7 +389,7 @@ fn parse(data: &[u8]) -> Result<ParsedPackage> {
                     outer_index,
                     object_name: resolve_name(&names, object_name_idx).to_string(),
                     archetype_index,
-                    object_flags,
+                    object_flags: format!("0x{:016X}", object_flags),
                     serial_size,
                     serial_offset,
                 })
