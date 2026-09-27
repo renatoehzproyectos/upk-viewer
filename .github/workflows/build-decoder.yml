@@ -1,0 +1,45 @@
+name: Build WASM decoder (viewer3d skeleton)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "viewer3d/**"
+      - ".github/workflows/build-decoder.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.61
+
+      - name: Configure (emcmake)
+        working-directory: viewer3d/decoder
+        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (emmake)
+        working-directory: viewer3d/decoder
+        run: emmake cmake --build build -j$(nproc) 2>&1 | tee build.log
+
+      - name: Upload build log (always, for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: viewer3d/decoder/build.log
+
+      - name: Upload wasm artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          path: |
+            viewer3d/decoder/build/udk_decoder.js
+            viewer3d/decoder/build/udk_decoder.wasm
+          name: udk-decoder-wasm
+
