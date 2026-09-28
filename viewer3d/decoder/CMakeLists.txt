@@ -54,25 +54,25 @@ file(GLOB RIJNDAEL_SRC ${VENDOR}/libs/rijndael/*.c)
 file(GLOB DETEX_SRC ${VENDOR}/libs/detex/*.c)
 
 
-# WASM UE3-only: drop sources that require UNREAL1/25/4 or missing platform SDKs
-list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnAnim2\\.cpp$")
-list(FILTER UNREAL_MAT_SRC EXCLUDE REGEX "UnTexture4\\.cpp$")
-list(FILTER UNREAL_SRC EXCLUDE REGEX "UnObject4\\.cpp$")
-list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "GameFileSystemGears4\\.cpp$")
-list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "IOStoreFileSystem\\.cpp$")
 
-list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TextureNVTT\\.cpp$")
-list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TexturePNG\\.cpp$")
-list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh1\\.cpp$")
-list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh2\\.cpp$")
-list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh4\\.cpp$")
-list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnAnim4\\.cpp$")
-list(FILTER UNREAL_PKG_SRC EXCLUDE REGEX "UnPackage2\\.cpp$")
-list(FILTER UNREAL_PKG_SRC EXCLUDE REGEX "UnPackage4\\.cpp$")
+# WASM UE3-only: drop sources needing missing deps or pure UE1/UE4
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnAnim2\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnAnim4\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh1\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh2\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh4\.cpp$")
+list(FILTER UNREAL_MAT_SRC EXCLUDE REGEX "UnTexture4\.cpp$")
+list(FILTER UNREAL_SRC EXCLUDE REGEX "UnObject4\.cpp$")
+list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "GameFileSystemGears4\.cpp$")
+list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "IOStoreFileSystem\.cpp$")
+list(FILTER UNREAL_PKG_SRC EXCLUDE REGEX "UnPackage4\.cpp$")
+list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TextureNVTT\.cpp$")
+list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TexturePNG\.cpp$")
 
 
 add_executable(udk_decoder
   bindings.cpp
+  ${VENDOR}/Unreal/UnCoreDecryptAES.cpp
   ${CORE_SRC}
   ${UNREAL_SRC}
   ${UNREAL_FS_SRC}
