@@ -1,7 +1,6 @@
 #ifndef __UNTEXTURENVTT_H__
 #define __UNTEXTURENVTT_H__
 
-// NVTT not available under Emscripten — stub so UnTexture.cpp compiles.
 namespace nv {
 struct DDSHeader {
 	void setFourCC(unsigned, unsigned, unsigned, unsigned) {}

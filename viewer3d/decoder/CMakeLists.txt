@@ -61,6 +61,16 @@ list(FILTER UNREAL_SRC EXCLUDE REGEX "UnObject4\\.cpp$")
 list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "GameFileSystemGears4\\.cpp$")
 list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "IOStoreFileSystem\\.cpp$")
 
+list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TextureNVTT\\.cpp$")
+list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TexturePNG\\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh1\\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh2\\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnMesh4\\.cpp$")
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnAnim4\\.cpp$")
+list(FILTER UNREAL_PKG_SRC EXCLUDE REGEX "UnPackage2\\.cpp$")
+list(FILTER UNREAL_PKG_SRC EXCLUDE REGEX "UnPackage4\\.cpp$")
+
+
 add_executable(udk_decoder
   bindings.cpp
   ${CORE_SRC}
