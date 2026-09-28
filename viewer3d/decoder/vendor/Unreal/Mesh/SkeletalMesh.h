@@ -41,8 +41,8 @@ struct CSkelMeshVertex : public CMeshVertex
 
 	void UnpackWeights(CVec4& OutWeights) const
 	{
-#if USE_SSE
-		OutWeights.mm = UnpackPackedBytes(PackedWeights);
+#if 0
+		// (original SSE path removed - equivalent scalar code kept below)
 #else
 		float Scale = 1.0f / 255;
 		OutWeights.v[0] =  (PackedWeights        & 0xFF) * Scale;

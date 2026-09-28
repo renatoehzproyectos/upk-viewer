@@ -384,7 +384,7 @@ FORCEINLINE void operator delete(void* ptr, size_t)
 }
 
 // inplace new
-FORCEINLINE void* operator new(size_t /*size*/, void* ptr)
+FORCEINLINE void* operator new(size_t /*size*/, void* ptr) noexcept
 {
 	return ptr;
 }

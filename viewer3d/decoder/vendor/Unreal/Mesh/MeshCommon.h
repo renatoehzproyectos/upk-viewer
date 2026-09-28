@@ -122,7 +122,7 @@ FORCEINLINE void Unpack(CVec3& Unpacked, const CPackedNormal& Packed)
 
 FORCEINLINE void Unpack(CVec4& Unpacked, const CPackedNormal& Packed)
 {
-	Unpacked.mm = UnpackPackedChars(Packed.Data);
+	UnpackPackedChars(Packed.Data, Unpacked);
 }
 
 #endif // USE_SSE

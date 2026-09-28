@@ -111,9 +111,9 @@ val get_static_mesh(int exportIndex)
     for (int v = 0; v < vertCount; v++)
     {
         const CStaticMeshVertex& mv = lod.Verts[v];
-        positions[v * 3 + 0] = mv.Position.X;
-        positions[v * 3 + 1] = mv.Position.Y;
-        positions[v * 3 + 2] = mv.Position.Z;
+        positions[v * 3 + 0] = mv.Position.v[0];
+        positions[v * 3 + 1] = mv.Position.v[1];
+        positions[v * 3 + 2] = mv.Position.v[2];
 
         CVec3 n;
         Unpack(n, mv.Normal);

@@ -21,6 +21,7 @@ include_directories(
   ${VENDOR}/Unreal/UnrealPackage
   ${VENDOR}/Unreal/Wrappers
   ${VENDOR}/Unreal/GameSpecific
+  ${VENDOR}/libs
   ${VENDOR}/libs/include
   ${VENDOR}/libs/lzo
   ${VENDOR}/libs/lz4
