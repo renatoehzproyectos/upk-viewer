@@ -3,23 +3,54 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>UDK 3D Viewer (preview)</title>
+<title>UDK 3D Viewer</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #0f1115; color: #e6e8ef; font-family: sans-serif; overflow: hidden; }
-  #info {
-    position: absolute; top: 12px; left: 16px; z-index: 10;
-    font-size: 13px; color: #8b90a3; max-width: 380px; line-height: 1.4;
+  html, body { margin: 0; height: 100%; background: #0f1115; color: #e6e8ef; font-family: -apple-system,Segoe UI,Roboto,sans-serif; overflow: hidden; }
+  #panel {
+    position: absolute; top: 0; left: 0; z-index: 10; width: 320px; max-height: 100%;
+    overflow-y: auto; background: rgba(15,17,21,0.92); border-right: 1px solid #262b38;
+    padding: 16px; box-sizing: border-box; font-size: 13px;
   }
-  #info a { color: #6ea8fe; }
+  #panel h1 { font-size: 15px; margin: 0 0 4px; }
+  #panel p.sub { color: #8b90a3; margin: 0 0 16px; }
+  #panel a { color: #6ea8fe; }
+  .drop {
+    border: 2px dashed #262b38; border-radius: 8px; padding: 20px 12px; text-align: center;
+    color: #8b90a3; cursor: pointer; margin-bottom: 12px;
+  }
+  .drop.drag { border-color: #6ea8fe; color: #e6e8ef; }
+  input[type=file] { display: none; }
+  button {
+    background: #161922; border: 1px solid #262b38; color: #e6e8ef; padding: 6px 12px;
+    border-radius: 6px; cursor: pointer; font-size: 12px; width: 100%;
+  }
+  button:hover { border-color: #6ea8fe; }
+  #log { white-space: pre-wrap; color: #8b90a3; font-size: 11px; margin-top: 10px; line-height: 1.5; }
+  #log .err { color: #f28787; }
+  #log .ok { color: #7fd996; }
+  .mesh-item {
+    padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between;
+  }
+  .mesh-item:hover { background: #161922; }
+  .mesh-item .idx { color: #8b90a3; font-size: 11px; }
   canvas { display: block; }
 </style>
 </head>
 <body>
-<div id="info">
-  <strong>UDK 3D Viewer — preview</strong><br />
-  Escena de prueba (aún no conectada al decodificador WASM).
-  Ver <a href="../">visor de estructura (header)</a>.
+<div id="panel">
+  <h1>UDK 3D Viewer</h1>
+  <p class="sub">Static meshes — geometría real, sin texturas/materiales todavía. <a href="../">Visor de estructura (header)</a></p>
+
+  <div class="drop" id="drop">
+    Arrastra uno o más .udk/.upk aquí<br />(el archivo que contiene el StaticMesh, y opcionalmente los que referencia)
+    <input type="file" id="fileInput" multiple accept=".udk,.upk,.u,.umap" />
+  </div>
+  <button id="btnPick">Elegir archivo(s)</button>
+
+  <div id="meshList"></div>
+  <div id="log"></div>
 </div>
+<script src="./pkg/udk_decoder.js"></script>
 <script type="importmap">
 {
   "imports": {
@@ -32,49 +63,148 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("fileInput");
+const btnPick = document.getElementById("btnPick");
+const meshListEl = document.getElementById("meshList");
+const logEl = document.getElementById("log");
+
+let Module = null;
+let mainFilename = null;
+let meshGroup = null;
+
+function log(msg, cls) {
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// --- three.js scene setup ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f1115);
-
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(4, 3, 6);
-
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100000);
+camera.position.set(300, 200, 300);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
-
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-
 scene.add(new THREE.HemisphereLight(0xffffff, 0x222233, 1.2));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-dirLight.position.set(5, 10, 7);
+dirLight.position.set(500, 1000, 700);
 scene.add(dirLight);
-
-const grid = new THREE.GridHelper(20, 20, 0x333844, 0x1c1f28);
-scene.add(grid);
-
-// Placeholder geometry - stands in for a real StaticMesh export from the
-// WASM decoder once that API exists.
-const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
-const material = new THREE.MeshStandardMaterial({ color: 0x6ea8fe, metalness: 0.2, roughness: 0.6 });
-const cube = new THREE.Mesh(geometry, material);
-cube.position.y = 0.75;
-scene.add(cube);
+scene.add(new THREE.GridHelper(2000, 40, 0x333844, 0x1c1f28));
 
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-function animate() {
+(function animate() {
   requestAnimationFrame(animate);
-  cube.rotation.y += 0.005;
   controls.update();
   renderer.render(scene, camera);
+})();
+
+// --- WASM module init ---
+UdkDecoderModule().then((mod) => {
+  Module = mod;
+  log(Module.ccall("decoder_version", "string", [], []), "ok");
+}).catch((e) => {
+  log("Error cargando el módulo WASM: " + e, "err");
+});
+
+// --- file handling ---
+btnPick.addEventListener("click", () => fileInput.click());
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("drag"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  drop.classList.remove("drag");
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length) handleFiles(fileInput.files);
+  fileInput.value = "";
+});
+
+async function handleFiles(fileList) {
+  if (!Module) {
+    log("El módulo WASM todavía no termina de cargar, espera un segundo e intenta de nuevo.", "err");
+    return;
+  }
+  try {
+    Module.FS.mkdir("/game");
+  } catch (e) { /* already exists */ }
+
+  let first = null;
+  for (const file of fileList) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    Module.FS.writeFile("/game/" + file.name, buf);
+    log(`Cargado: ${file.name} (${(buf.length / 1024).toFixed(1)} KB)`);
+    if (!first) first = file.name;
+  }
+  mainFilename = first;
+
+  const rc = Module.ccall("scan_and_open", "number", ["string"], [mainFilename]);
+  if (rc !== 0) {
+    log(`No se pudo abrir "${mainFilename}" (código ${rc}).`, "err");
+    return;
+  }
+  log(`Paquete abierto: ${mainFilename}`, "ok");
+
+  const exportsArr = Module.list_exports();
+  const meshes = exportsArr.filter((e) => e.className === "StaticMesh");
+  log(`${exportsArr.length} exports encontrados, ${meshes.length} StaticMesh.`);
+
+  meshListEl.innerHTML = "";
+  meshes.forEach((m) => {
+    const div = document.createElement("div");
+    div.className = "mesh-item";
+    div.innerHTML = `<span>${m.objectName}</span><span class="idx">#${m.index}</span>`;
+    div.addEventListener("click", () => loadMesh(m.index, m.objectName));
+    meshListEl.appendChild(div);
+  });
+  if (meshes.length === 0) {
+    log("Este paquete no contiene StaticMesh exports (o son de un tipo que este visor aún no reconoce).", "err");
+  }
 }
-animate();
+
+function loadMesh(index, name) {
+  const data = Module.get_static_mesh(index);
+  if (!data) {
+    log(`No se pudo extraer geometría de "${name}" (#${index}).`, "err");
+    return;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(data.positions), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(data.normals), 3));
+  geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(data.uvs), 2));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(data.indices), 1));
+
+  const material = new THREE.MeshStandardMaterial({ color: 0x6ea8fe, metalness: 0.1, roughness: 0.7, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geometry, material);
+
+  if (meshGroup) scene.remove(meshGroup);
+  meshGroup = mesh;
+  scene.add(meshGroup);
+
+  geometry.computeBoundingSphere();
+  const s = geometry.boundingSphere;
+  if (s) {
+    controls.target.copy(s.center);
+    camera.position.copy(s.center).add(new THREE.Vector3(s.radius * 1.5, s.radius, s.radius * 1.5));
+    camera.near = Math.max(s.radius / 100, 0.1);
+    camera.far = s.radius * 100;
+    camera.updateProjectionMatrix();
+  }
+
+  log(`"${name}": ${data.vertexCount} vértices, ${data.indexCount / 3} triángulos.`, "ok");
+}
 </script>
 </body>
 </html>

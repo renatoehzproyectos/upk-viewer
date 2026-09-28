@@ -20,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --- Header/structure viewer (Rust -> wasm) ---
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -33,10 +34,38 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build wasm package
+      - name: Build wasm package (header viewer)
         working-directory: upk-wasm
         run: wasm-pack build --release --target web --out-dir ../www/pkg
 
+      # --- 3D viewer (C++ subset of UEViewer -> wasm via Emscripten) ---
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.61
+
+      - name: Configure decoder (emcmake)
+        working-directory: viewer3d/decoder
+        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build decoder (emmake)
+        working-directory: viewer3d/decoder
+        run: emmake cmake --build build -j$(nproc) 2>&1 | tee build.log
+
+      - name: Upload decoder build log (always, for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: decoder-build-log
+          path: viewer3d/decoder/build.log
+
+      - name: Copy decoder output into viewer3d/web/pkg
+        run: |
+          mkdir -p viewer3d/web/pkg
+          cp viewer3d/decoder/build/udk_decoder.js viewer3d/web/pkg/
+          cp viewer3d/decoder/build/udk_decoder.wasm viewer3d/web/pkg/
+
+      # --- Assemble & publish both pages ---
       - name: Assemble site
         run: |
           mkdir -p _site
