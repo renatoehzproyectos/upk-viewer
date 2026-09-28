@@ -14,6 +14,10 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -46,18 +50,34 @@ jobs:
 
       - name: Configure decoder (emcmake)
         working-directory: viewer3d/decoder
-        run: emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: |
+          set -o pipefail
+          emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release 2>&1 | tee configure.log
+
+      - name: Show CMake error log on configure failure
+        if: failure()
+        working-directory: viewer3d/decoder
+        run: |
+          echo "--- CMakeFiles/CMakeError.log (if any) ---"
+          find build -name CMakeError.log -exec cat {} \; || true
+          echo "--- CMakeFiles/CMakeOutput.log (if any) ---"
+          find build -name CMakeOutput.log -exec cat {} \; || true
 
       - name: Build decoder (emmake)
         working-directory: viewer3d/decoder
-        run: emmake cmake --build build -j$(nproc) 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          emmake cmake --build build -j$(nproc) 2>&1 | tee build.log
 
-      - name: Upload decoder build log (always, for debugging)
+      - name: Upload decoder build logs (always, for debugging)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: decoder-build-log
-          path: viewer3d/decoder/build.log
+          name: decoder-build-logs
+          path: |
+            viewer3d/decoder/configure.log
+            viewer3d/decoder/build.log
+          if-no-files-found: ignore
 
       - name: Copy decoder output into viewer3d/web/pkg
         run: |
