@@ -70,7 +70,7 @@ val list_exports()
         val entry = val::object();
         entry.set("index", i);
         entry.set("className", std::string(GCurrentPackage->GetClassNameFor(exp)));
-        entry.set("objectName", std::string(GCurrentPackage->GetObjectName(exp.ObjectName)));
+        entry.set("objectName", std::string(exp.ObjectName.Str));
         result.call<void>("push", entry);
     }
     return result;
