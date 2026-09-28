@@ -12,6 +12,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <new>
 
 #if _MSC_VER
 #	include <intrin.h>
@@ -383,8 +384,8 @@ FORCEINLINE void operator delete(void* ptr, size_t)
 	appFree(ptr);
 }
 
-// inplace new - already provided by <new> (transitively included here), no
-// need to redefine it; doing so is a hard redefinition error under libc++.
+// inplace new - provided by <new> (explicitly included above).
+// Do not redefine it; doing so is a hard redefinition error under libc++.
 
 
 #define DEFAULT_ALIGNMENT		8
