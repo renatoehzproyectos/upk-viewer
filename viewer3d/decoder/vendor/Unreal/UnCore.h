@@ -37,7 +37,7 @@ class UnPackage;
 // field offset macros
 // get offset of the field in struc
 //#ifdef offsetof
-#	define FIELD2OFS(struc, field)		(offsetof(struc, field))				// more compatible
+#	define FIELD2OFS(struc, field)		((uint16)offsetof(struc, field))		// cast: clang 64-bit narrowing
 //#else
 //#	define FIELD2OFS(struc, field)		((unsigned) &((struc *)NULL)->field)	// just in case
 //#endif

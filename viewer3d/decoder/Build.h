@@ -25,3 +25,20 @@
 
 #define PROFILE         0
 #define DECLARE_VIEWER_PROPS 0
+
+// WASM: force-disable extras that need missing deps or TRIBES3
+#undef BIOSHOCK
+#define BIOSHOCK 0
+#undef TRIBES3
+#define TRIBES3 0
+#undef SUPPORT_XBOX360
+#define SUPPORT_XBOX360 0
+#undef SUPPORT_IPHONE
+#define SUPPORT_IPHONE 0
+#undef SUPPORT_ANDROID
+#define SUPPORT_ANDROID 0
+#undef SUPPORT_PS4
+#define SUPPORT_PS4 0
+#undef SUPPORT_SWITCH
+#define SUPPORT_SWITCH 0
+

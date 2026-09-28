@@ -155,6 +155,55 @@ struct FTextureSource
 
 #endif // UNREAL4
 
+
+// UE3 needs this enum even when UNREAL4 is off (UTexture3 uses it).
+#if !UNREAL4
+enum ETextureCompressionSettings
+{
+	TC_Default,
+	TC_Normalmap,
+	TC_Masks,
+	TC_Grayscale,
+	TC_Displacementmap,
+	TC_VectorDisplacementmap,
+	TC_HDR,
+	TC_HighDynamicRange = TC_HDR,
+	TC_EditorIcon,
+	TC_Alpha,
+	TC_DistanceFieldFont,
+	TC_HDR_Compressed,
+	TC_BC7,
+	TC_NormalmapAlpha,
+	TC_OneBitAlpha,
+	TC_NormalmapUncompressed,
+	TC_NormalmapBC5,
+	TC_OneBitMonochrome,
+	TC_SimpleLightmapModification,
+};
+_ENUM(ETextureCompressionSettings)
+{
+	_E(TC_Default),
+	_E(TC_Normalmap),
+	_E(TC_Masks),
+	_E(TC_Grayscale),
+	_E(TC_Displacementmap),
+	_E(TC_VectorDisplacementmap),
+	_E(TC_HDR),
+	_E(TC_HighDynamicRange),
+	_E(TC_EditorIcon),
+	_E(TC_Alpha),
+	_E(TC_DistanceFieldFont),
+	_E(TC_HDR_Compressed),
+	_E(TC_BC7),
+	_E(TC_NormalmapAlpha),
+	_E(TC_OneBitAlpha),
+	_E(TC_NormalmapUncompressed),
+	_E(TC_NormalmapBC5),
+	_E(TC_OneBitMonochrome),
+	_E(TC_SimpleLightmapModification),
+};
+#endif // !UNREAL4
+
 class UTexture3 : public UUnrealMaterial	// in UE3 it is derived from USurface->UObject; real name is UTexture
 {
 	DECLARE_CLASS(UTexture3, UUnrealMaterial)
