@@ -40,7 +40,7 @@ CONVERTER(FVector,         CVec3          )
 CONVERTER(FQuat,           CQuat          )
 CONVERTER(FCoords,         CCoords        )
 CONVERTER(FMeshUVFloat,    CMeshUVFloat   )
-#if UNREAL3
+#if UNREAL4
 CONVERTER_ONE_DIRECTION(FVector2D, CMeshUVFloat)
 #endif
 CONVERTER(TArray<FVector>, TArray<CVec3>  )

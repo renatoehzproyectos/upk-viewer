@@ -929,13 +929,15 @@ ETexturePixelFormat UTexture2D::GetTexturePixelFormat() const
 	}
 #endif // SUPPORT_ANDROID
 
-	// Source data - use even if cooked data is there
+	// Source data - use even if cooked data is there (UE4 only)
+#if UNREAL4
 	if (SourceArt.BulkData && Source.bPNGCompressed)
 	{
 		intFormat = TPF_PNG_BGRA;
 		if (Source.Format == TSF_RGBA16)
 			intFormat = TPF_PNG_RGBA;
 	}
+#endif
 
 	if (intFormat == TPF_UNKNOWN)
 	{
@@ -1040,17 +1042,17 @@ bool UTexture2D::GetTextureData(CTextureData &TexData) const
 		}
 	}
 
-	// SourceArt reading, data is stored in special bulk block instead of Mips array
+	// SourceArt reading (UE4 only)
+#if UNREAL4
 	if (TexData.Mips.Num() == 0 && SourceArt.BulkData && Source.bPNGCompressed)
 	{
-		// The texture is encoded only in SourceArt format (probably this is only UE4, not UE3 case)
 		CMipMap* DstMip = new (TexData.Mips) CMipMap;
 		DstMip->SetBulkData(SourceArt);
 		DstMip->USize = Source.SizeX;
 		DstMip->VSize = Source.SizeY;
 		TexData.Platform = Package->Platform;
-//		printf("Source png texture %dx%d\n", Source.SizeX, Source.SizeY);
 	}
+#endif
 
 	// Decode console textures
 

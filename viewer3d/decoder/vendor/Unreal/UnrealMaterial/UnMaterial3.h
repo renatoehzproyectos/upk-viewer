@@ -313,8 +313,12 @@ enum EPixelFormat
 	PF_A1,
 	PF_FloatR11G11B10,
 	PF_A4R4G4B4,			// not in UE4
+	PF_B8G8R8A8,			// alias used by UE3 texture code
+	PF_BC4,
+	PF_BC6H,
+	PF_BC7,
 #if UNREAL4
-	PF_B8G8R8A8,			// new name for PF_A8R8G8B8
+	// PF_B8G8R8A8 / PF_BC* already declared above for UE3			// new name for PF_A8R8G8B8
 	PF_R32FLOAT,			// == PF_R32F in UE4
 	PF_A8,
 	PF_R32_UINT,
@@ -387,6 +391,10 @@ _ENUM(EPixelFormat)
 	_E(PF_A1),
 	_E(PF_FloatR11G11B10),
 	_E(PF_A4R4G4B4),
+	_E(PF_B8G8R8A8),
+	_E(PF_BC4),
+	_E(PF_BC6H),
+	_E(PF_BC7),
 #if UNREAL4
 	_E(PF_B8G8R8A8),
 	_E(PF_R32FLOAT),
@@ -901,7 +909,11 @@ public:
 		PROP_BOOL(bIsMasked)
 		PROP_ARRAY(ReferencedTextures, PropType::UObject)
 		PROP_ARRAY(Expressions, PropType::UObject)
+#if UNREAL4
+#if UNREAL4
 		PROP_STRUC(CachedExpressionData, FMaterialCachedExpressionData)
+#endif
+#endif
 		PROP_ENUM2(BlendMode, EBlendMode)
 		PROP_FLOAT(OpacityMaskClipValue)
 #if DECLARE_VIEWER_PROPS

@@ -53,6 +53,14 @@ file(GLOB MSPACK_SRC ${VENDOR}/libs/mspack/*.c)
 file(GLOB RIJNDAEL_SRC ${VENDOR}/libs/rijndael/*.c)
 file(GLOB DETEX_SRC ${VENDOR}/libs/detex/*.c)
 
+
+# WASM UE3-only: drop sources that require UNREAL1/25/4 or missing platform SDKs
+list(FILTER UNREAL_UMESH_SRC EXCLUDE REGEX "UnAnim2\\.cpp$")
+list(FILTER UNREAL_MAT_SRC EXCLUDE REGEX "UnTexture4\\.cpp$")
+list(FILTER UNREAL_SRC EXCLUDE REGEX "UnObject4\\.cpp$")
+list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "GameFileSystemGears4\\.cpp$")
+list(FILTER UNREAL_FS_SRC EXCLUDE REGEX "IOStoreFileSystem\\.cpp$")
+
 add_executable(udk_decoder
   bindings.cpp
   ${CORE_SRC}

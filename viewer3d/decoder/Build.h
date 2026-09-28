@@ -26,11 +26,29 @@
 #define PROFILE         0
 #define DECLARE_VIEWER_PROPS 0
 
-// WASM: force-disable extras that need missing deps or TRIBES3
+// WASM: strip game/platform features that pull missing headers or UE2/UE4-only code
 #undef BIOSHOCK
 #define BIOSHOCK 0
 #undef TRIBES3
 #define TRIBES3 0
+#undef UC1
+#define UC1 0
+#undef UC2
+#define UC2 0
+#undef SPLINTER_CELL
+#define SPLINTER_CELL 0
+#undef LINEAGE2
+#define LINEAGE2 0
+#undef SWRC
+#define SWRC 0
+#undef LOCO
+#define LOCO 0
+#undef BATTLE_TERR
+#define BATTLE_TERR 0
+#undef XIII
+#define XIII 0
+#undef UT2
+#define UT2 0
 #undef SUPPORT_XBOX360
 #define SUPPORT_XBOX360 0
 #undef SUPPORT_IPHONE
