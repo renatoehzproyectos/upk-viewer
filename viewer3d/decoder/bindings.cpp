@@ -24,6 +24,7 @@
 #include "Mesh/StaticMesh.h"
 #include "UnrealMesh/UnMesh3.h"
 #include "UnrealMesh/UnAnimNotify.h"
+#include "UnrealMaterial/UnMaterial.h"
 #include "UnrealMaterial/UnMaterial2.h"
 #include "UnrealMaterial/UnMaterial3.h"
 #include "UnrealMaterial/UnMaterialExpression.h"
