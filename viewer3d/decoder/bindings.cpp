@@ -91,11 +91,21 @@ val get_static_mesh(int exportIndex)
     guard(get_static_mesh);
 
     UObject* obj = GCurrentPackage->CreateExport(exportIndex);
-    if (!obj || !obj->IsA("StaticMesh"))
+    if (!obj)
+        return val::null();
+
+    // DECLARE_CLASS(UStaticMesh3) registers as "StaticMesh3"; alias "StaticMesh" is only for CreateClass
+    if (!obj->IsA("StaticMesh3") && !obj->IsA("StaticMesh") && !obj->IsA("FracturedStaticMesh"))
         return val::null();
 
     UStaticMesh3* SM = static_cast<UStaticMesh3*>(obj);
     CStaticMesh* mesh = SM->ConvertedMesh;
+    if (!mesh)
+    {
+        // ConvertMesh is normally called from Serialize; force it if missing
+        SM->ConvertMesh();
+        mesh = SM->ConvertedMesh;
+    }
     if (!mesh || mesh->Lods.Num() == 0)
         return val::null();
 
