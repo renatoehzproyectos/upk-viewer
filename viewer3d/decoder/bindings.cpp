@@ -15,6 +15,7 @@
 #include <emscripten/val.h>
 #include <string>
 #include <vector>
+#include <exception>
 
 #include "Core.h"
 #include "UnCore.h"
@@ -29,11 +30,13 @@ static const char* GAME_ROOT = "/game";
 static bool GScanned = false;
 static UnPackage* GCurrentPackage = nullptr;
 
-// Called after JS has written one or more uploaded files into MEMFS under
-// /game via FS.writeFile(). Scans that directory the normal UEViewer way,
-// then opens 'mainFilename' as the current package.
-//
-// Returns: 0 = ok, 1 = package not found after scan, 2 = reserved for future use.
+static val make_error(const char* stage, const std::string& detail)
+{
+    val out = val::object();
+    out.set("error", std::string(stage) + (detail.empty() ? "" : (": " + detail)));
+    return out;
+}
+
 int scan_and_open(const std::string& mainFilename)
 {
     guard(scan_and_open);
@@ -54,9 +57,6 @@ int scan_and_open(const std::string& mainFilename)
     unguard;
 }
 
-// List of exports in the currently open package, as a JS array of
-// { index, className, objectName }. JS decides which ones to try loading
-// as a mesh (className == "StaticMesh").
 val list_exports()
 {
     val result = val::array();
@@ -76,83 +76,112 @@ val list_exports()
     return result;
 }
 
-// Extracts real geometry for a StaticMesh export: flat Float32Arrays for
-// position/normal/uv (kept as separate arrays, which map directly onto
-// three.js BufferAttributes), and a Uint32Array of triangle indices.
-// LOD 0 only for this first pass.
-//
-// Returns null (JS side) on failure; otherwise an object:
-//   { vertexCount, indexCount, positions, normals, uvs, indices, sections: [{firstIndex, numFaces}] }
 val get_static_mesh(int exportIndex)
 {
     if (!GCurrentPackage)
-        return val::null();
+        return make_error("no_package", "");
 
-    guard(get_static_mesh);
-
-    UObject* obj = GCurrentPackage->CreateExport(exportIndex);
-    if (!obj)
-        return val::null();
-
-    // DECLARE_CLASS(UStaticMesh3) -> type name "StaticMesh3" (alias "StaticMesh" is CreateClass-only)
-    if (!obj->IsA("StaticMesh3") && !obj->IsA("StaticMesh") && !obj->IsA("FracturedStaticMesh"))
-        return val::null();
-
-    UStaticMesh3* SM = static_cast<UStaticMesh3*>(obj);
-    CStaticMesh* mesh = SM->ConvertedMesh;
-    if (!mesh || mesh->Lods.Num() == 0)
-        return val::null();
-
-    CStaticMeshLod& lod = mesh->Lods[0];
-    int vertCount = lod.NumVerts;
-    int idxCount = lod.Indices.Num();
-
-    std::vector<float> positions(vertCount * 3);
-    std::vector<float> normals(vertCount * 3);
-    std::vector<float> uvs(vertCount * 2);
-    std::vector<uint32_t> indices(idxCount);
-
-    for (int v = 0; v < vertCount; v++)
+    try
     {
-        const CStaticMeshVertex& mv = lod.Verts[v];
-        positions[v * 3 + 0] = mv.Position.v[0];
-        positions[v * 3 + 1] = mv.Position.v[1];
-        positions[v * 3 + 2] = mv.Position.v[2];
+        // Clear any previous failed object pointer so CreateExport retries
+        FObjectExport& Exp = GCurrentPackage->GetExport(exportIndex);
+        const char* className = GCurrentPackage->GetClassNameFor(Exp);
+        const char* objName = *Exp.ObjectName;
 
-        CVec3 n;
-        Unpack(n, mv.Normal);
-        normals[v * 3 + 0] = n.X;
-        normals[v * 3 + 1] = n.Y;
-        normals[v * 3 + 2] = n.Z;
+        UObject* obj = nullptr;
+        try
+        {
+            obj = GCurrentPackage->CreateExport(exportIndex);
+        }
+        catch (...)
+        {
+            return make_error("CreateExport_exception",
+                std::string(className) + " '" + objName + "'");
+        }
 
-        uvs[v * 2 + 0] = mv.UV.U;
-        uvs[v * 2 + 1] = mv.UV.V;
+        if (!obj)
+            return make_error("CreateExport_null",
+                std::string(className) + " '" + objName + "'");
+
+        // Type name is "StaticMesh3" (DECLARE_CLASS); package class is "StaticMesh"
+        if (!obj->IsA("StaticMesh3") && !obj->IsA("StaticMesh") && !obj->IsA("FracturedStaticMesh"))
+            return make_error("not_staticmesh",
+                std::string("cpp=") + obj->GetClassName() + " pkg=" + className);
+
+        UStaticMesh3* SM = static_cast<UStaticMesh3*>(obj);
+        CStaticMesh* mesh = SM->ConvertedMesh;
+        if (!mesh)
+            return make_error("no_ConvertedMesh",
+                std::string(objName) + " (serialize may have failed)");
+
+        if (mesh->Lods.Num() == 0)
+            return make_error("no_lods",
+                std::string(objName) + " rawLods=" + std::to_string(SM->Lods.Num()));
+
+        CStaticMeshLod& lod = mesh->Lods[0];
+        int vertCount = lod.NumVerts;
+        int idxCount = lod.Indices.Num();
+
+        if (vertCount <= 0)
+            return make_error("no_verts", std::string(objName));
+        if (idxCount <= 0)
+            return make_error("no_indices", std::string(objName));
+        if (!lod.Verts)
+            return make_error("null_verts_ptr", std::string(objName));
+
+        std::vector<float> positions(vertCount * 3);
+        std::vector<float> normals(vertCount * 3);
+        std::vector<float> uvs(vertCount * 2);
+        std::vector<uint32_t> indices(idxCount);
+
+        for (int v = 0; v < vertCount; v++)
+        {
+            const CStaticMeshVertex& mv = lod.Verts[v];
+            positions[v * 3 + 0] = mv.Position.v[0];
+            positions[v * 3 + 1] = mv.Position.v[1];
+            positions[v * 3 + 2] = mv.Position.v[2];
+
+            CVec3 n;
+            Unpack(n, mv.Normal);
+            normals[v * 3 + 0] = n.X;
+            normals[v * 3 + 1] = n.Y;
+            normals[v * 3 + 2] = n.Z;
+
+            uvs[v * 2 + 0] = mv.UV.U;
+            uvs[v * 2 + 1] = mv.UV.V;
+        }
+
+        CIndexBuffer::IndexAccessor_t GetIndex = lod.Indices.GetAccessor();
+        for (int i = 0; i < idxCount; i++)
+            indices[i] = (uint32_t)GetIndex(i);
+
+        val sections = val::array();
+        for (int s = 0; s < lod.Sections.Num(); s++)
+        {
+            val sec = val::object();
+            sec.set("firstIndex", lod.Sections[s].FirstIndex);
+            sec.set("numFaces", lod.Sections[s].NumFaces);
+            sections.call<void>("push", sec);
+        }
+
+        val out = val::object();
+        out.set("vertexCount", vertCount);
+        out.set("indexCount", idxCount);
+        out.set("positions", val(typed_memory_view(positions.size(), positions.data())).call<val>("slice"));
+        out.set("normals", val(typed_memory_view(normals.size(), normals.data())).call<val>("slice"));
+        out.set("uvs", val(typed_memory_view(uvs.size(), uvs.data())).call<val>("slice"));
+        out.set("indices", val(typed_memory_view(indices.size(), indices.data())).call<val>("slice"));
+        out.set("sections", sections);
+        return out;
     }
-
-    CIndexBuffer::IndexAccessor_t GetIndex = lod.Indices.GetAccessor();
-    for (int i = 0; i < idxCount; i++)
-        indices[i] = (uint32_t)GetIndex(i);
-
-    val sections = val::array();
-    for (int s = 0; s < lod.Sections.Num(); s++)
+    catch (const std::exception& e)
     {
-        val sec = val::object();
-        sec.set("firstIndex", lod.Sections[s].FirstIndex);
-        sec.set("numFaces", lod.Sections[s].NumFaces);
-        sections.call<void>("push", sec);
+        return make_error("std_exception", e.what());
     }
-
-    val out = val::object();
-    out.set("vertexCount", vertCount);
-    out.set("indexCount", idxCount);
-    out.set("positions", val(typed_memory_view(positions.size(), positions.data())).call<val>("slice"));
-    out.set("normals", val(typed_memory_view(normals.size(), normals.data())).call<val>("slice"));
-    out.set("uvs", val(typed_memory_view(uvs.size(), uvs.data())).call<val>("slice"));
-    out.set("indices", val(typed_memory_view(indices.size(), indices.data())).call<val>("slice"));
-    out.set("sections", sections);
-    return out;
-
-    unguard;
+    catch (...)
+    {
+        return make_error("unknown_exception", "");
+    }
 }
 
 std::string decoder_version()

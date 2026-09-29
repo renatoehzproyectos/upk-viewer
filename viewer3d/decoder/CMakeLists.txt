@@ -90,7 +90,12 @@ add_executable(udk_decoder
   ${DETEX_SRC}
 )
 
+target_compile_options(udk_decoder PRIVATE
+  -fexceptions
+)
 target_link_options(udk_decoder PRIVATE
+  "SHELL:-s DISABLE_EXCEPTION_CATCHING=0"
+  "SHELL:-fexceptions"
   "SHELL:-s WASM=1"
   "SHELL:-s MODULARIZE=1"
   "SHELL:-s EXPORT_NAME=UdkDecoderModule"
