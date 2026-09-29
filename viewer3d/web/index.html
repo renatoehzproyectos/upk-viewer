@@ -112,7 +112,11 @@ window.addEventListener("resize", () => {
 // --- WASM module init ---
 UdkDecoderModule().then((mod) => {
   Module = mod;
-  log(Module.ccall("decoder_version", "string", [], []), "ok");
+  try {
+    log(Module.decoder_version(), "ok");
+  } catch (e) {
+    log("WASM cargado, decoder_version falló: " + e, "err");
+  }
 }).catch((e) => {
   log("Error cargando el módulo WASM: " + e, "err");
 });
@@ -149,7 +153,7 @@ async function handleFiles(fileList) {
   }
   mainFilename = first;
 
-  const rc = Module.ccall("scan_and_open", "number", ["string"], [mainFilename]);
+  const rc = Module.scan_and_open(mainFilename);
   if (rc !== 0) {
     log(`No se pudo abrir "${mainFilename}" (código ${rc}).`, "err");
     return;
