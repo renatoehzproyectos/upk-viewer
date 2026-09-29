@@ -112,11 +112,7 @@ window.addEventListener("resize", () => {
 // --- WASM module init ---
 UdkDecoderModule().then((mod) => {
   Module = mod;
-  try {
-    log(Module.decoder_version(), "ok");
-  } catch (e) {
-    log("WASM cargado, pero decoder_version falló: " + e, "err");
-  }
+  log(Module.ccall("decoder_version", "string", [], []), "ok");
 }).catch((e) => {
   log("Error cargando el módulo WASM: " + e, "err");
 });
@@ -153,7 +149,7 @@ async function handleFiles(fileList) {
   }
   mainFilename = first;
 
-  const rc = Module.scan_and_open(mainFilename);
+  const rc = Module.ccall("scan_and_open", "number", ["string"], [mainFilename]);
   if (rc !== 0) {
     log(`No se pudo abrir "${mainFilename}" (código ${rc}).`, "err");
     return;
@@ -179,8 +175,8 @@ async function handleFiles(fileList) {
 
 function loadMesh(index, name) {
   const data = Module.get_static_mesh(index);
-  if (!data) {
-    log(`No se pudo extraer geometría de "${name}" (#${index}).`, "err");
+  if (!data || data.error) {
+    log(`No se pudo extraer geometría de "${name}" (#${index}): ${data ? data.error : "respuesta vacía"}`, "err");
     return;
   }
 

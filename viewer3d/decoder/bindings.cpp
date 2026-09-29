@@ -19,15 +19,48 @@
 #include "Core.h"
 #include "UnCore.h"
 #include "UnObject.h"
+#include "TypeInfo.h"
 #include "UnrealPackage/UnPackage.h"
 #include "Mesh/StaticMesh.h"
 #include "UnrealMesh/UnMesh3.h"
+#include "UnrealMesh/UnAnimNotify.h"
+#include "UnrealMaterial/UnMaterial2.h"
+#include "UnrealMaterial/UnMaterial3.h"
+#include "UnrealMaterial/UnMaterialExpression.h"
 
 using namespace emscripten;
 
 static const char* GAME_ROOT = "/game";
 static bool GScanned = false;
+static bool GClassesRegistered = false;
 static UnPackage* GCurrentPackage = nullptr;
+
+// UEViewer's normal CLI tool (UmodelTool/Main.cpp) registers every known
+// Unreal class before loading any package, via RegisterCoreClasses() plus a
+// BEGIN_CLASS_TABLE/END_CLASS_TABLE block. Without this, UnPackage::CreateExport
+// has no C++ class to instantiate for e.g. "StaticMesh" and silently returns
+// NULL for every single export - which is exactly the symptom we were seeing
+// (every mesh failing, not just some). We vendor only the UE3-relevant subset
+// of what Main.cpp registers (see RegisterUnrealClasses3() there for the
+// full/authoritative list this is trimmed from).
+static void EnsureClassesRegistered()
+{
+    if (GClassesRegistered)
+        return;
+    GClassesRegistered = true;
+
+    RegisterCoreClasses();
+    BEGIN_CLASS_TABLE
+        REGISTER_MATERIAL_CLASSES
+        REGISTER_ANIM_NOTIFY_CLASSES
+        REGISTER_MATERIAL_CLASSES_U3
+        REGISTER_MESH_CLASSES_U3
+        REGISTER_EXPRESSION_CLASSES
+    END_CLASS_TABLE
+    REGISTER_MATERIAL_ENUMS
+    REGISTER_MATERIAL_ENUMS_U3
+    REGISTER_MESH_ENUMS_U3
+}
 
 // Called after JS has written one or more uploaded files into MEMFS under
 // /game via FS.writeFile(). Scans that directory the normal UEViewer way,
@@ -37,6 +70,8 @@ static UnPackage* GCurrentPackage = nullptr;
 int scan_and_open(const std::string& mainFilename)
 {
     guard(scan_and_open);
+
+    EnsureClassesRegistered();
 
     if (!GScanned)
     {
@@ -86,22 +121,44 @@ val list_exports()
 val get_static_mesh(int exportIndex)
 {
     if (!GCurrentPackage)
-        return val::null();
+    {
+        val out = val::object();
+        out.set("error", std::string("No hay ningun paquete abierto."));
+        return out;
+    }
 
     guard(get_static_mesh);
 
     UObject* obj = GCurrentPackage->CreateExport(exportIndex);
     if (!obj)
-        return val::null();
+    {
+        val out = val::object();
+        out.set("error", std::string("CreateExport devolvio null (clase no registrada, o export marcado como Default__)."));
+        return out;
+    }
 
     // DECLARE_CLASS(UStaticMesh3) -> type name "StaticMesh3" (alias "StaticMesh" is CreateClass-only)
     if (!obj->IsA("StaticMesh3") && !obj->IsA("StaticMesh") && !obj->IsA("FracturedStaticMesh"))
-        return val::null();
+    {
+        val out = val::object();
+        out.set("error", std::string("El objeto cargo pero no es un StaticMesh."));
+        return out;
+    }
 
     UStaticMesh3* SM = static_cast<UStaticMesh3*>(obj);
     CStaticMesh* mesh = SM->ConvertedMesh;
-    if (!mesh || mesh->Lods.Num() == 0)
-        return val::null();
+    if (!mesh)
+    {
+        val out = val::object();
+        out.set("error", std::string("StaticMesh cargo pero ConvertedMesh es null (ConvertMesh() no se ejecuto)."));
+        return out;
+    }
+    if (mesh->Lods.Num() == 0)
+    {
+        val out = val::object();
+        out.set("error", std::string("ConvertedMesh no tiene ningun LOD."));
+        return out;
+    }
 
     CStaticMeshLod& lod = mesh->Lods[0];
     int vertCount = lod.NumVerts;
