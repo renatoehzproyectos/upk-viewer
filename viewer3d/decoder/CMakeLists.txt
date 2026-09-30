@@ -72,6 +72,7 @@ list(FILTER UNREAL_WRAP_SRC EXCLUDE REGEX "TexturePNG\.cpp$")
 
 add_executable(udk_decoder
   bindings.cpp
+  stubs.cpp
   ${VENDOR}/Unreal/UnCoreDecryptAES.cpp
   ${CORE_SRC}
   ${UNREAL_SRC}

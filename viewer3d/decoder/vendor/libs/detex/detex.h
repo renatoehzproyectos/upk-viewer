@@ -70,18 +70,10 @@ __BEGIN_DECLS
 
 #include <stdlib.h>
 #include <stdint.h>
-#ifndef __cplusplus
 #include <stdbool.h>
-#endif
 
-#if defined(__GNUC__)
 #define DETEX_INLINE_ONLY __attribute__((always_inline)) inline
 #define DETEX_RESTRICT __restrict
-#elif defined(_MSC_VER)
-#define DETEX_INLINE_ONLY __inline
-#define DETEX_RESTRICT
-#define __thread
-#endif
 
 /* Maximum uncompressed block size in bytes. */
 #define DETEX_MAX_BLOCK_SIZE 256
@@ -694,7 +686,7 @@ enum {
 		DETEX_PIXEL_FORMAT_RGBX8
 		),
 	DETEX_TEXTURE_FORMAT_ETC2_PUNCHTHROUGH = (
-		DETEX_TEXTURE_FORMAT_COMPRESSED_FORMAT_BITS(
+		DETEX_TEXTURE_FORMAT_COMPRESSED_FORMAT_BITS(	
 			DETEX_COMPRESSED_TEXTURE_FORMAT_INDEX_ETC2_PUNCHTHROUGH) |
 		DETEX_PIXEL_FORMAT_RGBA8
 		),
@@ -1199,3 +1191,4 @@ static DETEX_INLINE_ONLY uint32_t detexPixel32GetG16(uint32_t pixel) {
 __END_DECLS
 
 #endif
+
