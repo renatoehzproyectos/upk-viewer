@@ -6,6 +6,8 @@
 #include <vector>
 #include <csetjmp>
 #include <cstring>
+#include <cstdio>
+#include <cstdarg>
 
 #include "Core.h"
 #include "UnCore.h"
@@ -18,6 +20,38 @@
 #include "UnrealMaterial/UnMaterial3.h"
 
 using namespace emscripten;
+
+
+// ---- Elite debug ring buffer (JS: get_debug_log) ----
+static const int DBG_CAP = 64;
+static const int DBG_LINE = 240;
+static char GDbg[DBG_CAP][DBG_LINE];
+static int GDbgWrite = 0;
+static int GDbgCount = 0;
+
+static void Dbg(const char* stage, const char* detail = "")
+{
+    char line[DBG_LINE];
+    if (detail && detail[0])
+        snprintf(line, sizeof(line), "[%s] %s", stage, detail);
+    else
+        snprintf(line, sizeof(line), "[%s]", stage);
+    strncpy(GDbg[GDbgWrite], line, DBG_LINE - 1);
+    GDbg[GDbgWrite][DBG_LINE - 1] = 0;
+    GDbgWrite = (GDbgWrite + 1) % DBG_CAP;
+    if (GDbgCount < DBG_CAP) GDbgCount++;
+    appPrintf("DBG %s\n", line);
+}
+
+static void DbgF(const char* stage, const char* fmt, ...)
+{
+    char detail[200];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(detail, sizeof(detail), fmt, ap);
+    va_end(ap);
+    Dbg(stage, detail);
+}
 
 static const char* GAME_ROOT = "/game";
 static bool GScanned = false;
@@ -34,6 +68,7 @@ extern "C" void wasm_soft_error(const char* msg)
     {
         strncpy(GSoftErrorMsg, msg, sizeof(GSoftErrorMsg) - 1);
         GSoftErrorMsg[sizeof(GSoftErrorMsg) - 1] = 0;
+        Dbg("soft_error", msg);
     }
     if (GSoftJmpReady)
         longjmp(GSoftJmp, 1);
@@ -41,6 +76,7 @@ extern "C" void wasm_soft_error(const char* msg)
 
 static val make_error(const char* stage, const std::string& detail)
 {
+    DbgF("ERR", "%s %s", stage, detail.c_str());
     val out = val::object();
     std::string e = stage;
     if (!detail.empty()) e += ": " + detail;
@@ -51,6 +87,7 @@ static val make_error(const char* stage, const std::string& detail)
         GSoftErrorMsg[0] = 0;
     }
     out.set("error", e);
+    out.set("stage", std::string(stage));
     return out;
 }
 
@@ -80,18 +117,39 @@ static void EnsureClassesRegistered()
 }
 
 // Decode UTexture2D (or subclass) to RGBA8 for the browser.
-static val TextureToVal(UTexture2D* Tex)
+static val TextureToVal(UTexture2D* Tex, const char* why = "?")
 {
     if (!Tex)
+    {
+        DbgF("tex_null", "why=%s", why ? why : "?");
         return val::null();
+    }
+
+    DbgF("tex_begin", "%s class=%s name=%s fmt=%d",
+         why ? why : "?", Tex->GetClassName(), Tex->Name, (int)Tex->Format);
 
     CTextureData TexData;
-    if (!Tex->GetTextureData(TexData) || TexData.Mips.Num() == 0)
+    if (!Tex->GetTextureData(TexData))
+    {
+        DbgF("tex_GetTextureData_fail", "%s", Tex->Name);
         return val::null();
+    }
+    if (TexData.Mips.Num() == 0)
+    {
+        DbgF("tex_no_mips", "%s pixelFmt=%d", Tex->Name, (int)TexData.Format);
+        return val::null();
+    }
+
+    DbgF("tex_mips", "%s mips=%d pixelFmt=%d %dx%d",
+         Tex->Name, TexData.Mips.Num(), (int)TexData.Format,
+         TexData.Mips[0].USize, TexData.Mips[0].VSize);
 
     byte* rgba = TexData.Decompress(0);
     if (!rgba)
+    {
+        DbgF("tex_decompress_fail", "%s pixelFmt=%d", Tex->Name, (int)TexData.Format);
         return val::null();
+    }
 
     const CMipMap& Mip = TexData.Mips[0];
     int w = Mip.USize;
@@ -107,10 +165,12 @@ static val TextureToVal(UTexture2D* Tex)
     memcpy(pixels.data(), rgba, nbytes);
     appFree(rgba);
 
+    DbgF("tex_ok", "%s %dx%d", Tex->Name, w, h);
     val out = val::object();
     out.set("name", std::string(Tex->Name));
     out.set("width", w);
     out.set("height", h);
+    out.set("format", (int)TexData.Format);
     out.set("rgba", val(typed_memory_view(pixels.size(), pixels.data())).call<val>("slice"));
     return out;
 }
@@ -176,11 +236,16 @@ int scan_and_open(const std::string& mainFilename)
         GScanned = true;
     }
 
+    DbgF("scan_and_open", "file=%s", mainFilename.c_str());
     UnPackage* pkg = UnPackage::LoadPackage(mainFilename.c_str(), /*silent=*/true);
     if (!pkg)
+    {
+        Dbg("LoadPackage_fail", mainFilename.c_str());
         return 1;
+    }
 
     GCurrentPackage = pkg;
+    DbgF("LoadPackage_ok", "exports=%d", pkg->Summary.ExportCount);
     return 0;
 }
 
@@ -323,6 +388,7 @@ val get_static_mesh(int exportIndex)
 
         // Soft-extract diffuse texture for this section
         val texVal = val::null();
+        std::string texStatus = Mat ? "pending" : "no_material";
         if (Mat)
         {
             GSoftJmpReady = true;
@@ -330,12 +396,21 @@ val get_static_mesh(int exportIndex)
             {
                 UTexture2D* Diff = PickDiffuseFromMaterial(Mat);
                 if (Diff)
-                    texVal = TextureToVal(Diff);
+                {
+                    texVal = TextureToVal(Diff, Mat->Name);
+                    texStatus = texVal.isNull() ? "decode_fail" : "ok";
+                }
+                else
+                    texStatus = "no_diffuse_param";
             }
+            else
+                texStatus = std::string("soft_assert:") + GSoftErrorMsg;
             GSoftJmpReady = false;
             GSoftErrorMsg[0] = 0;
         }
         sec.set("diffuse", texVal);
+        sec.set("texStatus", texStatus);
+        sec.set("materialClass", Mat ? std::string(Mat->GetClassName()) : std::string(""));
         sections.call<void>("push", sec);
     }
 
@@ -350,9 +425,48 @@ val get_static_mesh(int exportIndex)
     return out;
 }
 
+
+val get_debug_log()
+{
+    val arr = val::array();
+    int start = (GDbgCount < DBG_CAP) ? 0 : GDbgWrite;
+    int n = GDbgCount;
+    for (int i = 0; i < n; i++)
+    {
+        int idx = (start + i) % DBG_CAP;
+        arr.call<void>("push", std::string(GDbg[idx]));
+    }
+    return arr;
+}
+
+void clear_debug_log()
+{
+    GDbgWrite = 0;
+    GDbgCount = 0;
+}
+
+val list_textures()
+{
+    val result = val::array();
+    if (!GCurrentPackage) return result;
+    int count = GCurrentPackage->Summary.ExportCount;
+    for (int i = 0; i < count; i++)
+    {
+        const FObjectExport& exp = GCurrentPackage->GetExport(i);
+        std::string cn = GCurrentPackage->GetClassNameFor(exp);
+        if (cn != "Texture2D" && cn != "LightMapTexture2D") continue;
+        val entry = val::object();
+        entry.set("index", i);
+        entry.set("className", cn);
+        entry.set("objectName", std::string(exp.ObjectName.Str));
+        result.call<void>("push", entry);
+    }
+    return result;
+}
+
 std::string decoder_version()
 {
-    return "udk-decoder-wasm - StaticMesh + diffuse textures (LOD0)";
+    return "udk-decoder-wasm v0.6.0-debug - StaticMesh + textures + elite Dbg";
 }
 
 EMSCRIPTEN_BINDINGS(udk_decoder)
@@ -362,4 +476,7 @@ EMSCRIPTEN_BINDINGS(udk_decoder)
     function("list_exports", &list_exports);
     function("get_static_mesh", &get_static_mesh);
     function("get_texture", &get_texture);
+    function("list_textures", &list_textures);
+    function("get_debug_log", &get_debug_log);
+    function("clear_debug_log", &clear_debug_log);
 }

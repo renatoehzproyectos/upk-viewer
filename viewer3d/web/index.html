@@ -62,6 +62,8 @@
   <button id="btnPick">Elegir archivo(s)</button>
   <button id="btnLoadAll" class="secondary" disabled>Cargar mapa completo (todos los meshes)</button>
   <div id="progress"></div>
+  <button id="btnDbg" class="secondary" type="button">Show decoder debug log</button>
+  <pre id="dbgLog" style="display:none;font-size:10px;max-height:180px;overflow:auto;color:#9ecbff;background:#0a0c10;padding:8px;border-radius:6px;margin-top:8px;"></pre>
   <div id="meshList"></div>
   <div id="log"></div>
 </div>
@@ -152,6 +154,30 @@ fileInput.addEventListener("change", () => {
   fileInput.value = "";
 });
 
+
+function dumpDecoderDebug(tag) {
+  try {
+    if (!Module || !Module.get_debug_log) return;
+    const lines = Module.get_debug_log();
+    const el = document.getElementById("dbgLog");
+    if (!el) return;
+    const text = (tag ? ("=== " + tag + " ===\n") : "") + (lines || []).join("\n");
+    el.textContent = text;
+    console.log("[decoder-debug]", tag || "", lines);
+  } catch (e) {
+    console.warn("debug log failed", e);
+  }
+}
+const btnDbg = document.getElementById("btnDbg");
+if (btnDbg) {
+  btnDbg.addEventListener("click", () => {
+    const el = document.getElementById("dbgLog");
+    if (!el) return;
+    el.style.display = el.style.display === "none" ? "block" : "none";
+    if (el.style.display !== "none") dumpDecoderDebug("manual");
+  });
+}
+
 async function handleFiles(fileList) {
   if (!Module) {
     log("El módulo WASM todavía no termina de cargar, espera un segundo e intenta de nuevo.", "err");
@@ -182,6 +208,10 @@ const meshes = exportsArr.filter((e) => e.className === "StaticMesh");
   allMeshes = meshes;
   loadedCount = 0;
   log(`${exportsArr.length} exports encontrados, ${meshes.length} StaticMesh.`);
+  let texList = [];
+  try { texList = Module.list_textures ? Module.list_textures() : []; } catch (e) {}
+  log(`Texture2D en este paquete: ${texList.length}` + (texList.length ? " (Path C posible aquí)" : " (sin texturas embebidas / carga más .upk)"), texList.length ? "ok" : "err");
+  dumpDecoderDebug("after list_exports");
 
   meshListEl.innerHTML = "";
   meshes.forEach((m) => {
@@ -340,6 +370,7 @@ function loadAllMeshes() {
     } else {
       if (progressEl) progressEl.textContent = `Mapa: ${ok}/${total} meshes en escena` + (fail ? ` (${fail} sin geometría)` : "");
       log(`Mapa completo: ${ok} meshes visibles` + (fail ? `, ${fail} omitidos` : "") + ".", ok ? "ok" : "err");
+      dumpDecoderDebug("after loadAllMeshes");
       fitCameraToObject(meshGroup);
     }
   }
