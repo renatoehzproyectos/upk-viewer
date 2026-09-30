@@ -96,12 +96,16 @@ void appError(const char *fmt, ...)
 #endif
 
 #if defined(__EMSCRIPTEN__)
-	// Soft-fail under WASM: never abort the whole module. Store message and throw
-	// a C++ exception that get_static_mesh() can catch.
+	// Soft-fail: never abort the module. Hand control back via longjmp if ready.
 	strcpy(GError.History, buf);
-	appStrcatn(ARRAY_ARG(GError.History), "\n");
-	appPrintf("ERROR (soft): %s\n", buf);
-	throw std::runtime_error(buf);
+	appStrcatn(ARRAY_ARG(GError.History), "
+");
+	appPrintf("ERROR (soft): %s
+", buf);
+	extern void wasm_soft_error(const char* msg);
+	wasm_soft_error(buf);
+	// If longjmp didn't happen, fall through without killing the process.
+	return;
 #elif DO_GUARD
 	strcpy(GError.History, buf);
 	appStrcatn(ARRAY_ARG(GError.History), "\n");
