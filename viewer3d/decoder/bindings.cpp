@@ -14,7 +14,6 @@
 #include "UnrealPackage/UnPackage.h"
 #include "Mesh/StaticMesh.h"
 #include "UnrealMesh/UnMesh3.h"
-#include "UnrealMaterial/UnMaterial3.h"
 
 using namespace emscripten;
 
@@ -23,12 +22,10 @@ static bool GScanned = false;
 static bool GClassesRegistered = false;
 static UnPackage* GCurrentPackage = nullptr;
 
-// Soft-error recovery: appError/assert longjmps here instead of aborting the module.
 static jmp_buf GSoftJmp;
 static bool GSoftJmpReady = false;
 static char GSoftErrorMsg[1024] = "";
 
-// Called from patched Core.cpp appError under __EMSCRIPTEN__
 extern "C" void wasm_soft_error(const char* msg)
 {
     if (msg && msg[0])
@@ -62,17 +59,14 @@ static void EnsureClassesRegistered()
 
     RegisterCoreClasses();
 
+    // Only mesh classes — avoid pulling UnMaterial3 heavy headers here
     BEGIN_CLASS_TABLE
-        REGISTER_MATERIAL_CLASSES
 #if UNREAL3
-        REGISTER_MATERIAL_CLASSES_U3
         REGISTER_MESH_CLASSES_U3
 #endif
     END_CLASS_TABLE
 
 #if UNREAL3
-    REGISTER_MATERIAL_ENUMS
-    REGISTER_MATERIAL_ENUMS_U3
     REGISTER_MESH_ENUMS_U3
 #endif
 
@@ -80,6 +74,8 @@ static void EnsureClassesRegistered()
     SuppressUnknownClass("UMaterialExpression*");
     SuppressUnknownClass("UPhysicalMaterial");
     SuppressUnknownClass("USkeletalMeshSocket");
+    SuppressUnknownClass("UMaterialInstance*");
+    SuppressUnknownClass("UMaterial*");
 }
 
 int scan_and_open(const std::string& mainFilename)
@@ -138,7 +134,6 @@ val get_static_mesh(int exportIndex)
     const char* className = GCurrentPackage->GetClassNameFor(Exp);
     const char* objName = *Exp.ObjectName;
 
-    // If a previous failed attempt left a half-baked object, clear it so we retry
     if (Exp.Object && !Exp.Object->IsA("StaticMesh3") && !Exp.Object->IsA("StaticMesh"))
         Exp.Object = nullptr;
 
@@ -221,7 +216,7 @@ val get_static_mesh(int exportIndex)
 
 std::string decoder_version()
 {
-    return "udk-decoder-wasm - StaticMesh geometry extraction (LOD0, registered classes)";
+    return "udk-decoder-wasm - StaticMesh geometry extraction (LOD0, classes registered)";
 }
 
 EMSCRIPTEN_BINDINGS(udk_decoder)

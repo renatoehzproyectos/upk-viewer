@@ -98,10 +98,8 @@ void appError(const char *fmt, ...)
 #if defined(__EMSCRIPTEN__)
 	// Soft-fail: never abort the module. Hand control back via longjmp if ready.
 	strcpy(GError.History, buf);
-	appStrcatn(ARRAY_ARG(GError.History), "
-");
-	appPrintf("ERROR (soft): %s
-", buf);
+	appStrcatn(ARRAY_ARG(GError.History), "\n");
+	appPrintf("ERROR (soft): %s\n", buf);
 	extern void wasm_soft_error(const char* msg);
 	wasm_soft_error(buf);
 	// If longjmp didn't happen, fall through without killing the process.
