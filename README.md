@@ -8,6 +8,27 @@ heuristic (unmodified, high FileVersion + LicenseeVersion 0) since UDK
 doesn't stamp itself explicitly in the header. Nothing is uploaded anywhere —
 files are parsed entirely in the browser.
 
+
+## Versioning
+
+Current version: **0.3.0** (see the `VERSION` file at the repo root).
+
+**Bump the version in `VERSION` on every user-visible change** (parser, 3D viewer,
+UI, WASM decoder, deploy/cache behavior). Format: `MAJOR.MINOR.PATCH`.
+
+The GitHub Actions deploy workflow:
+
+1. Reads `VERSION`
+2. Appends a UTC build timestamp → e.g. `0.3.0+20260930120000`
+3. Stamps that string into the top-right page badge (`v…`) and into asset URLs
+   (`udk_decoder.js?v=…`, `main.js?v=…`) so browsers **do not reuse cached**
+   JS/WASM after a deploy
+4. Writes `version.json` on the site for quick checks
+
+After a green workflow run, hard-refresh is usually unnecessary; a normal reload
+should pick up the new `?v=` URLs. If something still looks stale, do a single
+hard-refresh (Ctrl+Shift+R).
+
 ## What it does
 
 Reads the package header and shows:

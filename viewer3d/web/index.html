@@ -2,6 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>UDK 3D Viewer</title>
 <style>
@@ -34,9 +37,17 @@
   .mesh-item:hover { background: #161922; }
   .mesh-item .idx { color: #8b90a3; font-size: 11px; }
   canvas { display: block; }
+
+  #app-version {
+    position: fixed; top: 10px; right: 12px; z-index: 100;
+    font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #e6e8ef; opacity: 0.5; pointer-events: none;
+    user-select: none; letter-spacing: 0.02em;
+  }
 </style>
 </head>
 <body>
+<div id="app-version">v__APP_VERSION__</div>
 <div id="panel">
   <h1>UDK 3D Viewer</h1>
   <p class="sub">Static meshes — geometría real, sin texturas/materiales todavía. <a href="../">Visor de estructura (header)</a></p>
@@ -50,7 +61,7 @@
   <div id="meshList"></div>
   <div id="log"></div>
 </div>
-<script src="./pkg/udk_decoder.js"></script>
+<script src="./pkg/udk_decoder.js?v=__APP_VERSION__"></script>
 <script type="importmap">
 {
   "imports": {

@@ -86,12 +86,45 @@ jobs:
           cp viewer3d/decoder/build/udk_decoder.wasm viewer3d/web/pkg/
 
       # --- Assemble & publish both pages ---
+
+      - name: Stamp version into site (cache-bust + badge)
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          BUILD=$(date -u +%Y%m%d%H%M%S)
+          STAMP="${VERSION}+${BUILD}"
+          echo "Stamping version ${STAMP}"
+          # Replace placeholders in HTML
+          for f in viewer3d/web/index.html www/index.html; do
+            if [ -f "$f" ]; then
+              sed -i "s/__APP_VERSION__/${STAMP}/g" "$f"
+            fi
+          done
+          # Cache-bust wasm-pack assets referenced from main.js if present
+          if [ -f www/main.js ]; then
+            sed -i "s|./pkg/|./pkg/?v=${STAMP}&path=|g" www/main.js 2>/dev/null || true
+            # Prefer simple query on known imports
+            sed -i "s|upk_wasm.js|upk_wasm.js?v=${STAMP}|g" www/main.js || true
+          fi
+          # version.json for clients that poll
+          mkdir -p viewer3d/web www
+          printf '{"version":"%s","build":"%s"}\n' "$VERSION" "$BUILD" > viewer3d/web/version.json
+          cp viewer3d/web/version.json www/version.json
+          # Copy VERSION into site root for humans
+          cp VERSION _site_version_tmp 2>/dev/null || true
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "STAMP=${STAMP}" >> $GITHUB_ENV
+
       - name: Assemble site
         run: |
           mkdir -p _site
           cp -r www/* _site/
           mkdir -p _site/viewer3d
           cp -r viewer3d/web/* _site/viewer3d/
+          # Ensure version badge placeholders never ship unreplaced
+          find _site -name '*.html' -print0 | xargs -0 sed -i "s/__APP_VERSION__/${STAMP}/g"
+          echo "${STAMP}" > _site/VERSION
+          # GitHub Pages serves with CDN; HTML with no-cache meta + unique ?v= query on assets
+          # forces browsers to fetch new JS/WASM after each deploy.
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
