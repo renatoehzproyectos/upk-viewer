@@ -1,4 +1,4 @@
-// Real decode API (StaticMesh geometry only).
+// StaticMesh geometry + Texture2D diffuse for workshop map preview.
 
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
@@ -14,6 +14,8 @@
 #include "UnrealPackage/UnPackage.h"
 #include "Mesh/StaticMesh.h"
 #include "UnrealMesh/UnMesh3.h"
+#include "UnrealMaterial/UnMaterial.h"
+#include "UnrealMaterial/UnMaterial3.h"
 
 using namespace emscripten;
 
@@ -59,23 +61,109 @@ static void EnsureClassesRegistered()
 
     RegisterCoreClasses();
 
-    // Only mesh classes — avoid pulling UnMaterial3 heavy headers here
     BEGIN_CLASS_TABLE
 #if UNREAL3
         REGISTER_MESH_CLASSES_U3
+        REGISTER_MATERIAL_CLASSES_U3
 #endif
     END_CLASS_TABLE
 
 #if UNREAL3
     REGISTER_MESH_ENUMS_U3
+    REGISTER_MATERIAL_ENUMS_U3
 #endif
 
     SuppressUnknownClass("UBodySetup");
     SuppressUnknownClass("UMaterialExpression*");
     SuppressUnknownClass("UPhysicalMaterial");
     SuppressUnknownClass("USkeletalMeshSocket");
-    SuppressUnknownClass("UMaterialInstance*");
-    SuppressUnknownClass("UMaterial*");
+}
+
+// Decode UTexture2D (or subclass) to RGBA8 for the browser.
+static val TextureToVal(UTexture2D* Tex)
+{
+    if (!Tex)
+        return val::null();
+
+    CTextureData TexData;
+    if (!Tex->GetTextureData(TexData) || TexData.Mips.Num() == 0)
+        return val::null();
+
+    byte* rgba = TexData.Decompress(0);
+    if (!rgba)
+        return val::null();
+
+    const CMipMap& Mip = TexData.Mips[0];
+    int w = Mip.USize;
+    int h = Mip.VSize;
+    if (w <= 0 || h <= 0)
+    {
+        appFree(rgba);
+        return val::null();
+    }
+
+    size_t nbytes = (size_t)w * (size_t)h * 4;
+    std::vector<uint8_t> pixels(nbytes);
+    memcpy(pixels.data(), rgba, nbytes);
+    appFree(rgba);
+
+    val out = val::object();
+    out.set("name", std::string(Tex->Name));
+    out.set("width", w);
+    out.set("height", h);
+    out.set("rgba", val(typed_memory_view(pixels.size(), pixels.data())).call<val>("slice"));
+    return out;
+}
+
+// Prefer diffuse-like texture parameters from a material instance.
+static UTexture2D* PickDiffuseFromMaterial(UUnrealMaterial* Mat)
+{
+    if (!Mat) return nullptr;
+
+    if (Mat->IsA("Texture2D") || Mat->IsA("LightMapTexture2D"))
+        return static_cast<UTexture2D*>(Mat);
+
+    // MaterialInstance / MIC: TextureParameterValues
+    if (Mat->IsA("MaterialInstanceConstant") || Mat->IsA("MaterialInstance"))
+    {
+        UMaterialInstance* MI = static_cast<UMaterialInstance*>(Mat);
+        UTexture2D* fallback = nullptr;
+        for (int i = 0; i < MI->TextureParameterValues.Num(); i++)
+        {
+            UTexture3* T = MI->TextureParameterValues[i].ParameterValue;
+            if (!T || !(T->IsA("Texture2D") || T->IsA("LightMapTexture2D")))
+                continue;
+            UTexture2D* T2 = static_cast<UTexture2D*>(T);
+            const char* pname = MI->TextureParameterValues[i].GetName();
+            if (pname)
+            {
+                // Prefer common diffuse param names
+                if (appStristr((char*)pname, (char*)"Diffuse") || appStristr(pname, "BaseColor") ||
+                    appStristr(pname, "Albedo") || appStristr(pname, "Color") ||
+                    appStristr(pname, "DiffuseMap") || appStristr(pname, "Tex"))
+                    return T2;
+            }
+            if (!fallback) fallback = T2;
+        }
+        if (fallback) return fallback;
+        // Parent material
+        if (MI->Parent && MI->Parent != Mat)
+            return PickDiffuseFromMaterial(MI->Parent);
+    }
+
+    // UMaterial3: ReferencedTextures (older packages)
+    if (Mat->IsA("Material3") || Mat->IsA("Material"))
+    {
+        UMaterial3* M = static_cast<UMaterial3*>(Mat);
+        for (int i = 0; i < M->ReferencedTextures.Num(); i++)
+        {
+            UTexture2D* T = M->ReferencedTextures[i];
+            if (T && (T->IsA("Texture2D") || T->IsA("LightMapTexture2D")))
+                return T;
+        }
+    }
+
+    return nullptr;
 }
 
 int scan_and_open(const std::string& mainFilename)
@@ -113,6 +201,34 @@ val list_exports()
         result.call<void>("push", entry);
     }
     return result;
+}
+
+val get_texture(int exportIndex)
+{
+    if (!GCurrentPackage)
+        return make_error("no_package", "");
+
+    EnsureClassesRegistered();
+    GSoftErrorMsg[0] = 0;
+    GSoftJmpReady = true;
+    if (setjmp(GSoftJmp) != 0)
+    {
+        GSoftJmpReady = false;
+        return make_error("soft_assert", "");
+    }
+
+    UObject* obj = GCurrentPackage->CreateExport(exportIndex);
+    GSoftJmpReady = false;
+    if (!obj)
+        return make_error("CreateExport_null", "");
+
+    if (!obj->IsA("Texture2D") && !obj->IsA("LightMapTexture2D"))
+        return make_error("not_texture", obj->GetClassName());
+
+    val tex = TextureToVal(static_cast<UTexture2D*>(obj));
+    if (tex.isNull())
+        return make_error("decode_failed", obj->Name);
+    return tex;
 }
 
 val get_static_mesh(int exportIndex)
@@ -200,6 +316,26 @@ val get_static_mesh(int exportIndex)
         val sec = val::object();
         sec.set("firstIndex", lod.Sections[s].FirstIndex);
         sec.set("numFaces", lod.Sections[s].NumFaces);
+
+        UUnrealMaterial* Mat = lod.Sections[s].Material;
+        std::string matName = Mat ? std::string(Mat->Name) : "";
+        sec.set("materialName", matName);
+
+        // Soft-extract diffuse texture for this section
+        val texVal = val::null();
+        if (Mat)
+        {
+            GSoftJmpReady = true;
+            if (setjmp(GSoftJmp) == 0)
+            {
+                UTexture2D* Diff = PickDiffuseFromMaterial(Mat);
+                if (Diff)
+                    texVal = TextureToVal(Diff);
+            }
+            GSoftJmpReady = false;
+            GSoftErrorMsg[0] = 0;
+        }
+        sec.set("diffuse", texVal);
         sections.call<void>("push", sec);
     }
 
@@ -216,7 +352,7 @@ val get_static_mesh(int exportIndex)
 
 std::string decoder_version()
 {
-    return "udk-decoder-wasm - StaticMesh geometry extraction (LOD0, classes registered)";
+    return "udk-decoder-wasm - StaticMesh + diffuse textures (LOD0)";
 }
 
 EMSCRIPTEN_BINDINGS(udk_decoder)
@@ -225,4 +361,5 @@ EMSCRIPTEN_BINDINGS(udk_decoder)
     function("scan_and_open", &scan_and_open);
     function("list_exports", &list_exports);
     function("get_static_mesh", &get_static_mesh);
+    function("get_texture", &get_texture);
 }
