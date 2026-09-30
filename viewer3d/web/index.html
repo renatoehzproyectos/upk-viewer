@@ -63,7 +63,7 @@
   <button id="btnLoadAll" class="secondary" disabled>Cargar mapa completo (todos los meshes)</button>
   <div id="progress"></div>
   <button id="btnDbg" class="secondary" type="button">Show decoder debug log</button>
-  <pre id="dbgLog" style="display:none;font-size:10px;max-height:180px;overflow:auto;color:#9ecbff;background:#0a0c10;padding:8px;border-radius:6px;margin-top:8px;"></pre>
+  <pre id="dbgLog" style="display:none;font-size:10px;min-height:48px;max-height:220px;overflow:auto;color:#9ecbff;background:#0a0c10;padding:8px;border-radius:6px;margin-top:8px;white-space:pre-wrap;word-break:break-all;"></pre>
   <div id="meshList"></div>
   <div id="log"></div>
 </div>
@@ -156,25 +156,41 @@ fileInput.addEventListener("change", () => {
 
 
 function dumpDecoderDebug(tag) {
+  const el = document.getElementById("dbgLog");
+  if (!el) return;
+  let text = tag ? ("=== " + tag + " ===\n") : "";
   try {
-    if (!Module || !Module.get_debug_log) return;
-    const lines = Module.get_debug_log();
-    const el = document.getElementById("dbgLog");
-    if (!el) return;
-    const text = (tag ? ("=== " + tag + " ===\n") : "") + (lines || []).join("\n");
-    el.textContent = text;
-    console.log("[decoder-debug]", tag || "", lines);
+    if (!Module) {
+      text += "(Module not loaded yet — wait for WASM)";
+    } else if (typeof Module.get_debug_log !== "function") {
+      text += "(get_debug_log missing — WASM is old or build failed.\n";
+      text += "decoder_version: " + (typeof Module.decoder_version === "function" ? Module.decoder_version() : "?") + ")";
+    } else {
+      const lines = Module.get_debug_log() || [];
+      if (!lines.length) {
+        text += "(log empty — open a .udk first, then press again)";
+      } else {
+        text += lines.join("\n");
+      }
+    }
   } catch (e) {
+    text += "(exception: " + (e && e.message ? e.message : e) + ")";
     console.warn("debug log failed", e);
   }
+  el.textContent = text;
+  el.style.display = "block";
+  console.log("[decoder-debug]", text);
 }
 const btnDbg = document.getElementById("btnDbg");
 if (btnDbg) {
   btnDbg.addEventListener("click", () => {
     const el = document.getElementById("dbgLog");
     if (!el) return;
-    el.style.display = el.style.display === "none" ? "block" : "none";
-    if (el.style.display !== "none") dumpDecoderDebug("manual");
+    if (el.style.display === "none" || !el.textContent) {
+      dumpDecoderDebug("manual");
+    } else {
+      el.style.display = "none";
+    }
   });
 }
 
