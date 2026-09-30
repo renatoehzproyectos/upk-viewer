@@ -44,20 +44,24 @@
     color: #e6e8ef; opacity: 0.5; pointer-events: none;
     user-select: none; letter-spacing: 0.02em;
   }
+  button.secondary { margin-top: 8px; opacity: 0.9; }
+  .mesh-item.active { background: #1a2233; border: 1px solid #2a3550; }
+  #progress { color: #8b90a3; font-size: 11px; margin-top: 8px; }
 </style>
 </head>
 <body>
 <div id="app-version">v__APP_VERSION__</div>
 <div id="panel">
   <h1>UDK 3D Viewer</h1>
-  <p class="sub">Static meshes — geometría real, sin texturas/materiales todavía. <a href="../">Visor de estructura (header)</a></p>
+  <p class="sub">Preview de mapas workshop (Rocket League / UDK) — todos los StaticMesh en la escena. <a href="../">Visor de estructura (header)</a></p>
 
   <div class="drop" id="drop">
     Arrastra uno o más .udk/.upk aquí<br />(el archivo que contiene el StaticMesh, y opcionalmente los que referencia)
     <input type="file" id="fileInput" multiple accept=".udk,.upk,.u,.umap" />
   </div>
   <button id="btnPick">Elegir archivo(s)</button>
-
+  <button id="btnLoadAll" class="secondary" disabled>Cargar mapa completo (todos los meshes)</button>
+  <div id="progress"></div>
   <div id="meshList"></div>
   <div id="log"></div>
 </div>
@@ -83,6 +87,8 @@ const logEl = document.getElementById("log");
 let Module = null;
 let mainFilename = null;
 let meshGroup = null;
+let allMeshes = [];
+let loadedCount = 0;
 
 function log(msg, cls) {
   const line = document.createElement("div");
@@ -172,20 +178,138 @@ async function handleFiles(fileList) {
   log(`Paquete abierto: ${mainFilename}`, "ok");
 
   const exportsArr = Module.list_exports();
-  const meshes = exportsArr.filter((e) => e.className === "StaticMesh");
+const meshes = exportsArr.filter((e) => e.className === "StaticMesh");
+  allMeshes = meshes;
+  loadedCount = 0;
   log(`${exportsArr.length} exports encontrados, ${meshes.length} StaticMesh.`);
 
   meshListEl.innerHTML = "";
   meshes.forEach((m) => {
     const div = document.createElement("div");
     div.className = "mesh-item";
+    div.dataset.index = m.index;
     div.innerHTML = `<span>${m.objectName}</span><span class="idx">#${m.index}</span>`;
-    div.addEventListener("click", () => loadMesh(m.index, m.objectName));
+    div.addEventListener("click", () => {
+      // highlight only — full map stays loaded
+      document.querySelectorAll(".mesh-item").forEach((el) => el.classList.remove("active"));
+      div.classList.add("active");
+      focusMeshByName(m.objectName);
+    });
     meshListEl.appendChild(div);
   });
+
+  const btnAll = document.getElementById("btnLoadAll");
+  if (btnAll) {
+    btnAll.disabled = meshes.length === 0;
+    btnAll.onclick = () => loadAllMeshes();
+  }
+
   if (meshes.length === 0) {
     log("Este paquete no contiene StaticMesh exports (o son de un tipo que este visor aún no reconoce).", "err");
+  } else {
+    // Auto-load full map for workshop preview
+    loadAllMeshes();
   }
+}
+
+function clearSceneMeshes() {
+  if (meshGroup) {
+    scene.remove(meshGroup);
+    meshGroup.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+        else o.material.dispose();
+      }
+    });
+  }
+  meshGroup = new THREE.Group();
+  scene.add(meshGroup);
+}
+
+function meshFromData(data, name) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(data.positions), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(data.normals), 3));
+  geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(data.uvs), 2));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(data.indices), 1));
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+
+  // Neutral workshop look — slight color variation by name hash so parts read as distinct
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  const hue = ((hash % 360) + 360) % 360;
+  const color = new THREE.Color().setHSL(hue / 360, 0.35, 0.55);
+
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    metalness: 0.15,
+    roughness: 0.7,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = name;
+  return mesh;
+}
+
+function fitCameraToObject(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(size.x, size.y, size.z, 1) * 0.6;
+  controls.target.copy(center);
+  camera.position.set(center.x + radius * 1.6, center.y + radius * 1.1, center.z + radius * 1.6);
+  camera.near = Math.max(radius / 200, 0.05);
+  camera.far = Math.max(radius * 50, 5000);
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
+function focusMeshByName(name) {
+  if (!meshGroup) return;
+  const obj = meshGroup.getObjectByName(name);
+  if (!obj) return;
+  fitCameraToObject(obj);
+}
+
+function loadAllMeshes() {
+  if (!Module || !allMeshes.length) return;
+  clearSceneMeshes();
+  const progressEl = document.getElementById("progress");
+  let ok = 0, fail = 0;
+  const total = allMeshes.length;
+
+  // Yield to UI every few meshes so the page stays responsive
+  let i = 0;
+  function step() {
+    const batch = 4;
+    for (let n = 0; n < batch && i < total; n++, i++) {
+      const m = allMeshes[i];
+      try {
+        const data = Module.get_static_mesh(m.index);
+        if (!data || data.error) {
+          fail++;
+        } else {
+          const mesh = meshFromData(data, m.objectName);
+          meshGroup.add(mesh);
+          ok++;
+        }
+      } catch (e) {
+        fail++;
+      }
+      if (progressEl) progressEl.textContent = `Cargando mapa… ${i}/${total} (${ok} ok, ${fail} fallos)`;
+    }
+    if (i < total) {
+      requestAnimationFrame(step);
+    } else {
+      if (progressEl) progressEl.textContent = `Mapa: ${ok}/${total} meshes en escena` + (fail ? ` (${fail} sin geometría)` : "");
+      log(`Mapa completo: ${ok} meshes visibles` + (fail ? `, ${fail} omitidos` : "") + ".", ok ? "ok" : "err");
+      fitCameraToObject(meshGroup);
+    }
+  }
+  step();
 }
 
 function loadMesh(index, name) {
@@ -195,31 +319,14 @@ function loadMesh(index, name) {
     return;
   }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(data.positions), 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(data.normals), 3));
-  geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(data.uvs), 2));
-  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(data.indices), 1));
-
-  const material = new THREE.MeshStandardMaterial({ color: 0x6ea8fe, metalness: 0.1, roughness: 0.7, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(geometry, material);
-
-  if (meshGroup) scene.remove(meshGroup);
-  meshGroup = mesh;
-  scene.add(meshGroup);
-
-  geometry.computeBoundingSphere();
-  const s = geometry.boundingSphere;
-  if (s) {
-    controls.target.copy(s.center);
-    camera.position.copy(s.center).add(new THREE.Vector3(s.radius * 1.5, s.radius, s.radius * 1.5));
-    camera.near = Math.max(s.radius / 100, 0.1);
-    camera.far = s.radius * 100;
-    camera.updateProjectionMatrix();
-  }
-
+  // Single-mesh mode: replace scene contents with just this one
+  clearSceneMeshes();
+  const mesh = meshFromData(data, name);
+  meshGroup.add(mesh);
+  fitCameraToObject(mesh);
   log(`"${name}": ${data.vertexCount} vértices, ${data.indexCount / 3} triángulos.`, "ok");
 }
+
 </script>
 </body>
 </html>
