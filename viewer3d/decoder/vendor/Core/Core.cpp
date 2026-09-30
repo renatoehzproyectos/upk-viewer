@@ -1,4 +1,6 @@
 #include "Core.h"
+#include <stdexcept>
+#include <string>
 
 #if _WIN32
 #include <direct.h>					// for mkdir()
@@ -93,8 +95,14 @@ void appError(const char *fmt, ...)
 	}
 #endif
 
-#if DO_GUARD
-//	appNotify("ERROR: %s\n", buf);
+#if defined(__EMSCRIPTEN__)
+	// Soft-fail under WASM: never abort the whole module. Store message and throw
+	// a C++ exception that get_static_mesh() can catch.
+	strcpy(GError.History, buf);
+	appStrcatn(ARRAY_ARG(GError.History), "\n");
+	appPrintf("ERROR (soft): %s\n", buf);
+	throw std::runtime_error(buf);
+#elif DO_GUARD
 	strcpy(GError.History, buf);
 	appStrcatn(ARRAY_ARG(GError.History), "\n");
 	THROW;

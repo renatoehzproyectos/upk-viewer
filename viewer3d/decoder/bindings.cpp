@@ -176,11 +176,11 @@ val get_static_mesh(int exportIndex)
     }
     catch (const std::exception& e)
     {
-        return make_error("std_exception", e.what());
+        return make_error("appError", std::string(e.what()) + (GError.History[0] ? std::string(" | ") + GError.History : ""));
     }
     catch (...)
     {
-        return make_error("unknown_exception", "");
+        return make_error("unknown_exception", GError.History[0] ? GError.History : "");
     }
 }
 

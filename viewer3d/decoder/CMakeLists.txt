@@ -95,6 +95,7 @@ target_compile_options(udk_decoder PRIVATE
 )
 target_link_options(udk_decoder PRIVATE
   "SHELL:-s DISABLE_EXCEPTION_CATCHING=0"
+  "SHELL:-s ASSERTIONS=1"
   "SHELL:-fexceptions"
   "SHELL:-s WASM=1"
   "SHELL:-s MODULARIZE=1"
