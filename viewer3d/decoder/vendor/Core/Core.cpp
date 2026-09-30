@@ -72,6 +72,11 @@ void appPrintf(const char *fmt, ...)
 
 CErrorContext GError;
 
+
+#if defined(__EMSCRIPTEN__)
+extern "C" __attribute__((weak)) void wasm_soft_error(const char* /*msg*/) {}
+#endif
+
 void appError(const char *fmt, ...)
 {
 #if THREADING
@@ -100,7 +105,7 @@ void appError(const char *fmt, ...)
 	strcpy(GError.History, buf);
 	appStrcatn(ARRAY_ARG(GError.History), "\n");
 	appPrintf("ERROR (soft): %s\n", buf);
-	extern void wasm_soft_error(const char* msg);
+	extern "C" void wasm_soft_error(const char* msg);
 	wasm_soft_error(buf);
 	// If longjmp didn't happen, fall through without killing the process.
 	return;
