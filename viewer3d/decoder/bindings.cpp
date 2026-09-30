@@ -157,9 +157,9 @@ static UTexture2D* PickDiffuseFromMaterial(UUnrealMaterial* Mat)
         UMaterial3* M = static_cast<UMaterial3*>(Mat);
         for (int i = 0; i < M->ReferencedTextures.Num(); i++)
         {
-            UTexture2D* T = M->ReferencedTextures[i];
-            if (T && (T->IsA("Texture2D") || T->IsA("LightMapTexture2D")))
-                return T;
+            UTexture3* T3 = M->ReferencedTextures[i];
+            if (T3 && (T3->IsA("Texture2D") || T3->IsA("LightMapTexture2D")))
+                return static_cast<UTexture2D*>(T3);
         }
     }
 
